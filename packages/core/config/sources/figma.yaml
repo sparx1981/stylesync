@@ -1,0 +1,8 @@
+id: figma
+display_name: Figma Community
+category: web
+access_method: api
+base_url: https://api.figma.com
+rpm: 30
+enabled: true
+tracked_files: []

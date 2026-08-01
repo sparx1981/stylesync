@@ -1,0 +1,39 @@
+{
+  "name": "@stylesync/core",
+  "version": "2.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./db": "./dist/db/db.js",
+    "./sources": "./dist/adapters/sourceConfig.js",
+    "./*": "./dist/*.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && mkdir -p dist/db && cp src/db/schema.sql dist/db/schema.sql",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --experimental-strip-types test/*.test.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "better-sqlite3": "^11.3.0",
+    "cheerio": "^1.0.0",
+    "culori": "^4.0.1",
+    "playwright": "^1.48.0",
+    "postcss": "^8.4.47",
+    "postcss-value-parser": "^4.2.0",
+    "js-yaml": "^4.1.0",
+    "jscodeshift": "^17.1.1",
+    "ts-morph": "^24.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/js-yaml": "^4.0.9",
+    "@types/jscodeshift": "^0.11.11",
+    "@types/node": "^22.7.5",
+    "typescript": "^5.6.3",
+    "@types/culori": "^4.0.1"
+  }
+}

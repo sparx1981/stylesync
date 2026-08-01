@@ -1,0 +1,20 @@
+id: lapa-ninja
+display_name: Lapa Ninja
+category: web
+access_method: sitemap
+base_url: https://www.lapa.ninja
+rpm: 6
+enabled: true
+
+listing:
+  path_template: "/page/{page}/"
+  start_page: 1
+  page_count: 5
+
+selectors:
+  listing_item: "article.item, div.grid-item, .post-item"
+  listing_item_link: "a"
+  listing_item_title: "h2, h3, .entry-title"
+  detail_visit_link: "a.visit, a[href*='out']:not([href*='lapa.ninja']), a:contains('Visit Website')"
+
+follow_through_to_live_site: true

@@ -1,0 +1,7 @@
+id: url
+display_name: Ad-hoc URL
+category: web
+access_method: headless
+base_url: ""
+rpm: 6
+enabled: true

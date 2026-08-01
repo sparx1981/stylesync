@@ -1,0 +1,6 @@
+{
+  "name": "@stylesync/skill",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Claude Code skill for the agent-assisted last mile of a StyleSync restyle (spec §10). Not published — copy .claude/skills/restyle into a project to use it."
+}

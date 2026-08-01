@@ -23,6 +23,10 @@ on:
         default: 'false'
         type: choice
         options: ['false', 'true']
+      url:
+        description: 'Ad-hoc URL to capture as a single reference (implies source=url; ignores "source"/"full" above)'
+        required: false
+        default: ''
 
 jobs:
   sync:
@@ -57,12 +61,24 @@ jobs:
           BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+          # Passed as env vars rather than interpolated directly into the
+          # script below — inputs are free-text (especially `url`), and
+          # substituting `${{ github.event.inputs.* }}` straight into a
+          # shell run: block is a known script-injection risk in GitHub
+          # Actions. Reading them back as $SOURCE_INPUT etc. avoids that.
+          SOURCE_INPUT: ${{ github.event.inputs.source }}
+          FULL_INPUT: ${{ github.event.inputs.full }}
+          URL_INPUT: ${{ github.event.inputs.url }}
         run: |
-          ARGS=""
-          if [ -n "${{ github.event.inputs.source }}" ]; then
-            ARGS="$ARGS --source ${{ github.event.inputs.source }}"
+          ARGS=()
+          if [ -n "$URL_INPUT" ]; then
+            ARGS+=(--add "$URL_INPUT")
+          else
+            if [ -n "$SOURCE_INPUT" ]; then
+              ARGS+=(--source "$SOURCE_INPUT")
+            fi
+            if [ "$FULL_INPUT" = "true" ]; then
+              ARGS+=(--full)
+            fi
           fi
-          if [ "${{ github.event.inputs.full }}" = "true" ]; then
-            ARGS="$ARGS --full"
-          fi
-          node packages/cli/dist/index.js sync $ARGS
+          node packages/cli/dist/index.js sync "${ARGS[@]}"

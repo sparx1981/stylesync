@@ -1,0 +1,66 @@
+name: Sync
+
+# Always-on sync worker for StyleSync Personal. Playwright (headless Chromium)
+# can't run inside a Vercel serverless function, so the actual `stylesync
+# sync` crawl runs here instead, against the same production Neon Postgres +
+# Vercel Blob storage the hosted site (stylesync-kappa.vercel.app) reads
+# from. Triggered on a schedule and on-demand (workflow_dispatch), the
+# latter dispatched by the web app's "Sync now" button via the GitHub REST
+# API (see apps/web/app/api/sync/route.ts).
+on:
+  schedule:
+    # 06:00 UTC daily — adjust freely, this is a single-user personal tool.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 'Source id to sync (blank = all sources)'
+        required: false
+        default: ''
+      full:
+        description: 'Full re-sync (ignore content-hash short-circuit)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @stylesync/core exec playwright install --with-deps chromium
+
+      - name: Build workspace
+        run: pnpm build
+
+      - name: Run sync
+        env:
+          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.source }}" ]; then
+            ARGS="$ARGS --source ${{ github.event.inputs.source }}"
+          fi
+          if [ "${{ github.event.inputs.full }}" = "true" ]; then
+            ARGS="$ARGS --full"
+          fi
+          node packages/cli/dist/index.js sync $ARGS

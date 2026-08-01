@@ -1,0 +1,10 @@
+id: design-spells
+display_name: Design Spells
+category: motion
+access_method: sitemap
+base_url: https://designspells.com
+rpm: 6
+enabled: true
+listing:
+  sitemap_path: /sitemap.xml
+  item_limit: 60

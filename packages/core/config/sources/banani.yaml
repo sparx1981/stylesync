@@ -1,0 +1,26 @@
+id: banani
+display_name: Banani
+category: flows
+access_method: headless
+base_url: https://www.banani.co
+rpm: 6
+enabled: true
+listing:
+  # Banani's iOS reference library (banani.co/references/apps) is a small,
+  # hand-curated set of apps rather than a paginated catalogue — confirmed
+  # by inspecting the real page's links. Update this list by hand if Banani
+  # adds more apps.
+  app_slugs:
+    - airbnb
+    - arc-search
+    - alltrails
+    - blinkist
+    - chatgpt
+    - calm
+    - things-3
+    - pinterest
+    - reddit
+    - substack
+    - tinder
+  screens_per_app_limit: 12
+  scroll_passes: 10

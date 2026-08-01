@@ -1,0 +1,13 @@
+id: saas-pages
+display_name: SaaS Pages
+category: web
+access_method: sitemap
+base_url: https://saaspages.xyz
+rpm: 6
+enabled: true
+listing:
+  path: /sites
+selectors:
+  listing_item: .block-card
+  listing_item_link: 'a[href^="/sites/"]'
+  listing_item_title: h1

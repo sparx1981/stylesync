@@ -1,0 +1,13 @@
+id: godly
+display_name: Recent (formerly Godly)
+category: motion
+access_method: sitemap
+base_url: https://recent.design
+rpm: 6
+enabled: true
+# Godly rebranded to "Recent" (recent.design) — this config still uses the
+# id "godly" so existing refs/DRPs keep their identity, only display_name
+# and base_url changed.
+listing:
+  sitemap_path: /sitemap.xml
+  item_limit: 60

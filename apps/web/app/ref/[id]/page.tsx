@@ -9,12 +9,12 @@ export const dynamic = 'force-dynamic';
 export default async function ReferenceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getDb();
-  const ref = db.getRef(id);
+  const ref = await db.getRef(id);
   if (!ref) notFound();
 
-  const drpRow = db.getDrp(id);
+  const drpRow = await db.getDrp(id);
   const drp: DRP | undefined = drpRow ? JSON.parse(drpRow.profile) : undefined;
-  const assets = db.listAssets(id);
+  const assets = await db.listAssets(id);
   const hasScreenshot = assets.some((a) => a.kind === 'screenshot');
 
   return (

@@ -14,6 +14,11 @@ export interface RawSourceConfig {
     base_url: string;
     rpm: number;
     enabled: boolean;
+    // Env vars this source needs to actually do anything (beyond the always-
+    // required POSTGRES_URL/BLOB_READ_WRITE_TOKEN). Surfaced on the web
+    // Sources page as a setup hint when missing — see ENV_SETUP_INFO in
+    // apps/web/components/SourceActions.tsx.
+    requires_env?: string[];
     [key: string]: unknown;
 }
 
@@ -34,6 +39,7 @@ const BUNDLED_SOURCE_CONFIGS: RawSourceConfig[] = [
         rpm: 30,
         enabled: true,
         tracked_files: [],
+        requires_env: ['FIGMA_TOKEN'],
   },
   {
         id: 'lapa-ninja',
@@ -103,6 +109,7 @@ const BUNDLED_SOURCE_CONFIGS: RawSourceConfig[] = [
                 screens_per_app_limit: 12,
                 scroll_passes: 10,
         },
+        requires_env: ['ANTHROPIC_API_KEY'],
   },
   {
         id: 'design-spells',

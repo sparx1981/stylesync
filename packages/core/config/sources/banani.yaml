@@ -24,3 +24,5 @@ listing:
     - tinder
   screens_per_app_limit: 12
   scroll_passes: 10
+requires_env:
+  - ANTHROPIC_API_KEY

@@ -6,3 +6,5 @@ base_url: https://api.figma.com
 rpm: 30
 enabled: true
 tracked_files: []
+requires_env:
+  - FIGMA_TOKEN

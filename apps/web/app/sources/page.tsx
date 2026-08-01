@@ -1,5 +1,6 @@
 import { getDb } from '../../lib/db';
 import { loadAllSourceConfigs } from '@stylesync/core/sources';
+import { SourceActions } from '../../components/SourceActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,7 @@ export default async function SourcesPage() {
             <th className="py-2 font-normal">Indexed</th>
             <th className="py-2 font-normal">Last sync</th>
             <th className="py-2 font-normal">Confidence avg</th>
+            <th className="py-2 font-normal text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -59,6 +61,9 @@ export default async function SourcesPage() {
               <td className="py-3 font-mono-token">{refsCount}</td>
               <td className="py-3 font-mono-token text-[var(--color-fg-muted)]">{row?.last_sync_at ? new Date(row.last_sync_at).toLocaleString() : '—'}</td>
               <td className="py-3 font-mono-token">{avgConfidence !== undefined ? avgConfidence.toFixed(2) : '—'}</td>
+              <td className="py-3 text-right">
+                <SourceActions sourceId={cfg.id} enabled={row ? row.enabled !== 0 : true} />
+              </td>
             </tr>
           ))}
         </tbody>

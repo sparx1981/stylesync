@@ -3,7 +3,7 @@ import { getDb } from '../lib/db';
 import { RefCard } from '../components/RefCard';
 import type { DRP } from '@stylesync/core';
 
-export const dynamic = 'force-dynamic'; // always read the live SQLite state — this is a localhost tool, not a CDN-cached site
+export const dynamic = 'force-dynamic'; // always read live DB state — this is a single-user tool, not a CDN-cached site
 
 interface PageProps {
   searchParams: Promise<{ q?: string; source?: string; favorite?: string }>;
@@ -13,13 +13,13 @@ export default async function LibraryPage({ searchParams }: PageProps) {
   const { q, source, favorite } = await searchParams;
   const db = getDb();
 
-  const sources = db.listSources();
-  let refs = q ? db.searchRefs(q) : db.listRefs({ source, favorite: favorite === '1' });
+  const sources = await db.listSources();
+  let refs = q ? await db.searchRefs(q) : await db.listRefs({ source, favorite: favorite === '1' });
   if (q && source) refs = refs.filter((r) => r.source_id === source);
 
   const drpByRef = new Map<string, DRP>();
   for (const r of refs) {
-    const row = db.getDrp(r.id);
+    const row = await db.getDrp(r.id);
     if (row) drpByRef.set(r.id, JSON.parse(row.profile));
   }
 

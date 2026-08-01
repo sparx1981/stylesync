@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { StyleSyncDB } from './db/db.js';
+import type { Db } from './db/getDb.js';
 import { getAdapter } from './adapters/registry.js';
 import { contentHash, visualHashPlaceholder } from './util/hash.js';
 import { buildDRP } from './drp/extract.js';
@@ -24,15 +24,15 @@ export interface SyncStats {
   changedRefIds: string[];
 }
 
-export async function syncSource(db: StyleSyncDB, opts: SyncOptions, log: (msg: string) => void = console.log): Promise<SyncStats> {
+export async function syncSource(db: Db, opts: SyncOptions, log: (msg: string) => void = console.log): Promise<SyncStats> {
   const adapter = getAdapter(opts.sourceId);
   if (!adapter) throw new Error(`No adapter registered for source "${opts.sourceId}"`);
 
   const runId = randomUUID();
   const startedAt = new Date().toISOString();
-  db.startSyncRun({ id: runId, source_id: opts.sourceId, trigger: opts.trigger ?? 'manual', started_at: startedAt });
+  await db.startSyncRun({ id: runId, source_id: opts.sourceId, trigger: opts.trigger ?? 'manual', started_at: startedAt });
 
-  db.upsertSource({
+  await db.upsertSource({
     id: adapter.id,
     display_name: adapter.displayName,
     category: adapter.category,
@@ -45,8 +45,9 @@ export async function syncSource(db: StyleSyncDB, opts: SyncOptions, log: (msg: 
   });
 
   const stats: SyncStats = { discovered: 0, added: 0, updated: 0, unchanged: 0, failed: 0, changedRefIds: [] };
+  const dataDir = 'dataDir' in db ? db.dataDir : join(process.cwd(), 'data');
   const ctx = {
-    dataDir: db.dataDir,
+    dataDir,
     rpm: adapter.rpm,
     full: !!opts.full,
     config: opts.urls ? { urls: opts.urls } : {},
@@ -66,7 +67,7 @@ export async function syncSource(db: StyleSyncDB, opts: SyncOptions, log: (msg: 
       const refId = `ref_${adapter.id.replace(/-/g, '')}_${item.externalId}`.slice(0, 64);
 
       try {
-        const existing = db.getRef(refId);
+        const existing = await db.getRef(refId);
         if (!opts.full && existing) {
           const sig = await adapter.signature(item, ctx);
           if (sig === existing.content_hash) {
@@ -76,15 +77,15 @@ export async function syncSource(db: StyleSyncDB, opts: SyncOptions, log: (msg: 
         }
 
         const capture = await adapter.capture(item, ctx);
-        const outcome = await persistCapture(db, adapter.id, refId, item.externalId, capture);
+        const outcome = await persistCapture(db, adapter.id, refId, item.externalId, capture, ctx.dataDir, logAndCapture);
         stats[outcome]++;
         if (outcome !== 'unchanged') stats.changedRefIds.push(refId);
 
         if (capture.status !== 'failed') {
           try {
-            const drp = buildDRP(refId, adapter.id, capture);
+            const drp = await buildDRP(refId, adapter.id, capture);
             const gated = validateQualityGate(drp);
-            db.upsertDrp({
+            await db.upsertDrp({
               ref_id: refId,
               version: 1,
               profile: JSON.stringify(gated.drp),
@@ -106,73 +107,112 @@ export async function syncSource(db: StyleSyncDB, opts: SyncOptions, log: (msg: 
     }
 
     const health = await adapter.health(ctx);
-    db.setSourceHealth(adapter.id, health);
-    db.setSourceLastSync(adapter.id, new Date().toISOString());
+    await db.setSourceHealth(adapter.id, health);
+    await db.setSourceLastSync(adapter.id, new Date().toISOString());
   } finally {
-    const logDir = join(db.dataDir, 'logs');
-    mkdirSync(logDir, { recursive: true });
-    const logPath = join(logDir, `${runId}.log`);
-    writeFileSync(logPath, logLines.join('\n'));
+    const logDir = join(ctx.dataDir, 'logs');
+    let logPath = '';
+    try {
+      mkdirSync(logDir, { recursive: true });
+      logPath = join(logDir, `${runId}.log`);
+      writeFileSync(logPath, logLines.join('\n'));
+    } catch {
+      // Read-only filesystem (e.g. a serverless-style runner) — logs still
+      // went to `log` (stdout), just not persisted to disk. Non-fatal.
+    }
 
-    db.finishSyncRun(runId, {
+    await db.finishSyncRun(runId, {
       finished_at: new Date().toISOString(),
       discovered: stats.discovered,
       added: stats.added,
       updated: stats.updated,
       unchanged: stats.unchanged,
       failed: stats.failed,
-      log_path: logPath,
+      log_path: logPath || null,
     });
   }
 
   return stats;
 }
 
+/**
+ * Saves one asset either to local disk (default, used by the CLI/local dev
+ * against SQLite) or to Vercel Blob (used by the GitHub Actions worker
+ * against production Postgres, where there is no persistent local
+ * filesystem for the web app to later read from). Blob is selected purely
+ * by the presence of BLOB_READ_WRITE_TOKEN in the environment — Vercel
+ * injects this automatically once Blob storage is attached to the project,
+ * the same way POSTGRES_URL is injected for Neon.
+ */
+async function saveAssetBytes(
+  dataDir: string,
+  sourceId: string,
+  externalId: string,
+  filename: string,
+  data: Buffer | string,
+  log: (msg: string) => void
+): Promise<string> {
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    try {
+      const { put } = await import('@vercel/blob');
+      const blob = await put(`refs/${sourceId}/${externalId}/${filename}`, data, {
+        access: 'public',
+        addRandomSuffix: false,
+      });
+      return blob.url;
+    } catch (err) {
+      log(`asset upload to Blob failed for ${sourceId}/${externalId}/${filename}, falling back to local disk: ${(err as Error).message}`);
+    }
+  }
+  const dir = join(dataDir, 'refs', sourceId, externalId);
+  mkdirSync(dir, { recursive: true });
+  const p = join(dir, filename);
+  writeFileSync(p, data);
+  return p.startsWith(dataDir) ? p.slice(dataDir.length + 1) : p;
+}
+
 async function persistCapture(
-  db: StyleSyncDB,
+  db: Db,
   sourceId: string,
   refId: string,
   externalId: string,
-  capture: RawCapture
+  capture: RawCapture,
+  dataDir: string,
+  log: (msg: string) => void
 ): Promise<'added' | 'updated' | 'unchanged'> {
-  const dir = join(db.dataDir, 'refs', sourceId, externalId);
-  mkdirSync(dir, { recursive: true });
-
   const contentHashValue = contentHash(capture.canonicalContent || refId);
   const visualHashValue = visualHashPlaceholder(capture.screenshotPng);
 
   if (capture.screenshotPng) {
-    const p = join(dir, 'screenshot.png');
-    writeFileSync(p, capture.screenshotPng);
-    db.addAsset({ ref_id: refId, kind: 'screenshot', path: relPath(db.dataDir, p), bytes: capture.screenshotPng.length, meta: null });
+    const path = await saveAssetBytes(dataDir, sourceId, externalId, 'screenshot.png', capture.screenshotPng, log);
+    await db.addAsset({ ref_id: refId, kind: 'screenshot', path, bytes: capture.screenshotPng.length, meta: null });
   }
   if (capture.thumbPng) {
-    const p = join(dir, 'thumb.png');
-    writeFileSync(p, capture.thumbPng);
-    db.addAsset({ ref_id: refId, kind: 'thumb', path: relPath(db.dataDir, p), bytes: capture.thumbPng.length, meta: null });
+    const path = await saveAssetBytes(dataDir, sourceId, externalId, 'thumb.png', capture.thumbPng, log);
+    await db.addAsset({ ref_id: refId, kind: 'thumb', path, bytes: capture.thumbPng.length, meta: null });
+  }
+  if (capture.motionWebm) {
+    const path = await saveAssetBytes(dataDir, sourceId, externalId, 'motion.webm', capture.motionWebm, log);
+    await db.addAsset({ ref_id: refId, kind: 'video', path, bytes: capture.motionWebm.length, meta: null });
   }
   if (capture.dom) {
-    const p = join(dir, 'dom.json');
-    writeFileSync(p, JSON.stringify({ html: capture.dom }));
-    db.addAsset({ ref_id: refId, kind: 'dom', path: relPath(db.dataDir, p), bytes: null, meta: null });
+    const path = await saveAssetBytes(dataDir, sourceId, externalId, 'dom.json', JSON.stringify({ html: capture.dom }), log);
+    await db.addAsset({ ref_id: refId, kind: 'dom', path, bytes: null, meta: null });
   }
   if (capture.computedStyles) {
-    const p = join(dir, 'computed-styles.json');
-    writeFileSync(p, JSON.stringify(capture.computedStyles));
-    db.addAsset({ ref_id: refId, kind: 'css', path: relPath(db.dataDir, p), bytes: null, meta: JSON.stringify({ kind: 'computed-styles' }) });
+    const path = await saveAssetBytes(dataDir, sourceId, externalId, 'computed-styles.json', JSON.stringify(capture.computedStyles), log);
+    await db.addAsset({ ref_id: refId, kind: 'css', path, bytes: null, meta: JSON.stringify({ kind: 'computed-styles' }) });
   }
   if (capture.stylesheetText) {
-    const p = join(dir, 'styles.css');
-    writeFileSync(p, capture.stylesheetText);
-    db.addAsset({ ref_id: refId, kind: 'css', path: relPath(db.dataDir, p), bytes: capture.stylesheetText.length, meta: null });
+    const path = await saveAssetBytes(dataDir, sourceId, externalId, 'styles.css', capture.stylesheetText, log);
+    await db.addAsset({ ref_id: refId, kind: 'css', path, bytes: capture.stylesheetText.length, meta: null });
   }
   if (capture.figmaNode) {
-    const p = join(dir, 'figma-node.json');
-    writeFileSync(p, JSON.stringify(capture.figmaNode));
-    db.addAsset({ ref_id: refId, kind: 'figma_node', path: relPath(db.dataDir, p), bytes: null, meta: null });
+    const path = await saveAssetBytes(dataDir, sourceId, externalId, 'figma-node.json', JSON.stringify(capture.figmaNode), log);
+    await db.addAsset({ ref_id: refId, kind: 'figma_node', path, bytes: null, meta: null });
   }
 
-  const outcome = db.upsertRef({
+  const outcome = await db.upsertRef({
     id: refId,
     source_id: sourceId,
     external_id: externalId,
@@ -190,8 +230,4 @@ async function persistCapture(
   });
 
   return outcome;
-}
-
-function relPath(dataDir: string, absPath: string): string {
-  return absPath.startsWith(dataDir) ? absPath.slice(dataDir.length + 1) : absPath;
 }

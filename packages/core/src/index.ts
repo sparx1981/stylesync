@@ -1,6 +1,9 @@
 // Public API surface of @stylesync/core — consumed by @stylesync/cli and apps/web.
 
 export { StyleSyncDB, resolveDataDir } from './db/db.js';
+export { StyleSyncPostgresDB } from './db/postgresDb.js';
+export { getDb } from './db/getDb.js';
+export type { Db } from './db/getDb.js';
 export type { SourceRow, RefRow, RefAssetRow, DrpRow, PackRow, SyncRunRow } from './db/db.js';
 
 export { syncSource } from './sync.js';

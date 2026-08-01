@@ -9,7 +9,20 @@ export default async function SourcesPage() {
   // adapter implementations (which pull in Playwright and have no business
   // being part of a web server bundle; see packages/core's "./sources" export).
   const sourceConfigs = loadAllSourceConfigs();
-  const runs = db.listSyncRuns();
+  const runs = await db.listSyncRuns();
+
+  const rows = await Promise.all(
+    sourceConfigs.map(async (cfg) => {
+      const row = await db.getSource(cfg.id);
+      const health = row?.health ? (JSON.parse(row.health) as { ok: boolean; message: string }) : undefined;
+      const refs = await db.listRefs({ source: cfg.id });
+      const confidences = (await Promise.all(refs.map((r) => db.getDrp(r.id))))
+        .map((d) => d?.confidence)
+        .filter((c): c is number => typeof c === 'number');
+      const avgConfidence = confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : undefined;
+      return { cfg, row, health, refsCount: refs.length, avgConfidence };
+    })
+  );
 
   return (
     <div className="mx-auto max-w-[1100px] px-6 py-8">
@@ -26,38 +39,28 @@ export default async function SourcesPage() {
           </tr>
         </thead>
         <tbody>
-          {sourceConfigs.map((cfg) => {
-            const row = db.getSource(cfg.id);
-            const health = row?.health ? (JSON.parse(row.health) as { ok: boolean; message: string }) : undefined;
-            const refs = db.listRefs({ source: cfg.id });
-            const confidences = refs
-              .map((r) => db.getDrp(r.id)?.confidence)
-              .filter((c): c is number => typeof c === 'number');
-            const avgConfidence = confidences.length ? confidences.reduce((a, b) => a + b, 0) / confidences.length : undefined;
-
-            return (
-              <tr key={cfg.id} className="border-b border-[var(--color-border)]">
-                <td className="py-3">
-                  <div className="font-medium">{cfg.display_name}</div>
-                  <div className="font-mono-token text-xs text-[var(--color-fg-subtle)]">{cfg.id} · {cfg.access_method}</div>
-                </td>
-                <td className="py-3">
-                  {!row ? (
-                    <span className="text-[var(--color-fg-subtle)]">never synced</span>
-                  ) : health?.ok ? (
-                    <span className="text-[var(--color-success)]">● healthy</span>
-                  ) : (
-                    <span className="text-[var(--color-danger)]" title={health?.message}>
-                      ● unhealthy
-                    </span>
-                  )}
-                </td>
-                <td className="py-3 font-mono-token">{refs.length}</td>
-                <td className="py-3 font-mono-token text-[var(--color-fg-muted)]">{row?.last_sync_at ? new Date(row.last_sync_at).toLocaleString() : '—'}</td>
-                <td className="py-3 font-mono-token">{avgConfidence !== undefined ? avgConfidence.toFixed(2) : '—'}</td>
-              </tr>
-            );
-          })}
+          {rows.map(({ cfg, row, health, refsCount, avgConfidence }) => (
+            <tr key={cfg.id} className="border-b border-[var(--color-border)]">
+              <td className="py-3">
+                <div className="font-medium">{cfg.display_name}</div>
+                <div className="font-mono-token text-xs text-[var(--color-fg-subtle)]">{cfg.id} · {cfg.access_method}</div>
+              </td>
+              <td className="py-3">
+                {!row ? (
+                  <span className="text-[var(--color-fg-subtle)]">never synced</span>
+                ) : health?.ok ? (
+                  <span className="text-[var(--color-success)]">● healthy</span>
+                ) : (
+                  <span className="text-[var(--color-danger)]" title={health?.message}>
+                    ● unhealthy
+                  </span>
+                )}
+              </td>
+              <td className="py-3 font-mono-token">{refsCount}</td>
+              <td className="py-3 font-mono-token text-[var(--color-fg-muted)]">{row?.last_sync_at ? new Date(row.last_sync_at).toLocaleString() : '—'}</td>
+              <td className="py-3 font-mono-token">{avgConfidence !== undefined ? avgConfidence.toFixed(2) : '—'}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
 

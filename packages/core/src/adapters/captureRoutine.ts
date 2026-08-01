@@ -1,5 +1,8 @@
 import type { Browser, Page } from 'playwright';
 import { chromium } from 'playwright';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { canonicalise, contentHash, visualHashPlaceholder } from '../util/hash.js';
 import type { RawCapture } from './types.js';
 
@@ -25,12 +28,22 @@ export async function runCaptureRoutine(opts: CaptureOptions): Promise<RawCaptur
   const browser = opts.browser ?? (await chromium.launch({ headless: true }));
   const capturedAt = new Date().toISOString();
 
+  // Video recording has to be configured at context-creation time in
+  // Playwright, and the file is only flushed to disk once the context is
+  // closed — so a temp dir is set up up front whenever motion capture is
+  // requested, and read back after `context.close()` below.
+  let videoDir: string | undefined;
+  if (opts.captureMotion) {
+    videoDir = mkdtempSync(join(tmpdir(), 'stylesync-motion-'));
+  }
+
   try {
     const context = await browser.newContext({
       viewport: { width: 1440, height: 900 },
       deviceScaleFactor: 2,
       userAgent:
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) StyleSyncBot/2.0 (personal, low-rate, contact: local-user)',
+      ...(videoDir ? { recordVideo: { dir: videoDir, size: { width: 1440, height: 900 } } } : {}),
     });
 
     await context.route('**/*', (route) => {
@@ -83,7 +96,26 @@ export async function runCaptureRoutine(opts: CaptureOptions): Promise<RawCaptur
 
     const canonicalContent = canonicalise({ dom, computedStyles, stylesheetText });
 
+    if (opts.captureMotion) {
+      await recordMotion(page).catch((err) => {
+        statusMessage = statusMessage ?? `motion capture interaction failed: ${(err as Error).message}`;
+      });
+    }
+
+    // The video file is only flushed to disk once the context closes, so it
+    // has to be read back afterwards rather than during the interaction.
+    const video = opts.captureMotion ? page.video() : undefined;
     await context.close();
+
+    let motionWebm: Buffer | undefined;
+    if (video) {
+      try {
+        const path = await video.path();
+        motionWebm = readFileSync(path);
+      } catch (err) {
+        statusMessage = statusMessage ?? `motion video unavailable: ${(err as Error).message}`;
+      }
+    }
 
     return {
       externalId: opts.externalId,
@@ -99,12 +131,39 @@ export async function runCaptureRoutine(opts: CaptureOptions): Promise<RawCaptur
       stylesheetText,
       fontFaces,
       rootCustomProperties,
+      motionWebm,
       status,
       statusMessage,
     };
   } finally {
     if (ownBrowser) await browser.close();
+    if (videoDir) rmSync(videoDir, { recursive: true, force: true });
   }
+}
+
+/**
+ * Drives a short, generic interaction sequence — hover the most prominent
+ * interactive element, then scroll — so the context's video recording
+ * captures whatever hover/scroll-triggered micro-interactions the page has
+ * (the reason a source like Godly, built around motion, needs this instead
+ * of a static screenshot). Returns nothing directly; the actual video bytes
+ * are read from `page.video()` by the caller once the context is closed.
+ */
+async function recordMotion(page: Page): Promise<undefined> {
+  try {
+    const hoverTarget = page.locator(SELECTOR_HEURISTICS.join(', ')).first();
+    if (await hoverTarget.count()) {
+      await hoverTarget.hover({ timeout: 3000 }).catch(() => undefined);
+      await page.waitForTimeout(600);
+    }
+  } catch {
+    // Non-fatal — a hover target may not exist; the scroll below still runs.
+  }
+  await page.mouse.wheel(0, 800).catch(() => undefined);
+  await page.waitForTimeout(500);
+  await page.mouse.wheel(0, -400).catch(() => undefined);
+  await page.waitForTimeout(500);
+  return undefined;
 }
 
 async function extractStyles(page: Page) {

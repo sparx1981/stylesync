@@ -31,8 +31,17 @@ export default async function ReferenceDetailPage({ params }: { params: Promise<
         </div>
         <h1 className="mt-4 text-lg font-medium">{ref.title ?? '(untitled)'}</h1>
         <p className="font-mono-token text-xs text-[var(--color-fg-subtle)]">{ref.origin_url}</p>
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap gap-2">
           <CopyPackCommand refId={id} />
+          {drp && (
+            <a
+              href={`/api/brand-guide/${id}`}
+              download
+              className="font-mono-token rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] hover:border-[var(--color-accent)]"
+            >
+              ↓ Brand guidelines (PDF)
+            </a>
+          )}
         </div>
       </div>
 

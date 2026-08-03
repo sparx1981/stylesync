@@ -187,16 +187,36 @@ function extractTypeScale(samples: RawCapture['computedStyles']) {
     };
   }
 
-  const bodyFamily = mostCommon((samples ?? []).map((s) => s.styles['font-family']).filter(Boolean)) ?? 'system-ui, sans-serif';
+  // Real computed CSS often uses a different font-family for headings than
+  // for body copy (a distinct display face is one of the most common brand
+  // signals) -- sampling h1-h4 and p/span/li/a separately, rather than
+  // collapsing everything into one "most common font-family" value, is the
+  // difference between actually capturing that distinction and silently
+  // flattening it to a single guess.
+  const overallFamily = mostCommon((samples ?? []).map((s) => s.styles['font-family']).filter(Boolean)) ?? 'system-ui, sans-serif';
+  const displayFamily = familyForTags(samples, ['h1', 'h2', 'h3', 'h4']) ?? overallFamily;
+  const bodyFamily = familyForTags(samples, ['p', 'span', 'li', 'a']) ?? overallFamily;
 
   return {
     families: {
-      display: { stack: bodyFamily, source: 'system' as const, weights: [600, 700] },
+      display: { stack: displayFamily, source: 'system' as const, weights: [600, 700] },
       body: { stack: bodyFamily, source: 'system' as const, weights: [400, 500] },
       mono: { stack: 'ui-monospace, SFMono-Regular, monospace', source: 'system' as const, weights: [400] },
     },
     scale: { ratio: bestRatio, base_px: Math.round(basePx), steps },
   };
+}
+
+// Samples are labelled either "tag.class1.class2" (the generic per-element
+// dedup pass in captureRoutine's extractStyles) or "tag#index" (the
+// SELECTOR_HEURISTICS pass, e.g. "h1#0") -- matching on either form covers
+// both sources of samples for a given tag name.
+function familyForTags(samples: RawCapture['computedStyles'], tags: string[]): string | undefined {
+  const values = (samples ?? [])
+    .filter((s) => tags.some((t) => s.selector === t || s.selector.startsWith(`${t}.`) || s.selector.startsWith(`${t}#`)))
+    .map((s) => s.styles['font-family'])
+    .filter(Boolean);
+  return mostCommon(values);
 }
 
 function findNearestLineHeight(samples: RawCapture['computedStyles'], targetPx: number): number | undefined {

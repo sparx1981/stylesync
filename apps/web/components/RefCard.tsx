@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import type { DRP, RefRow } from '@stylesync/core';
 import { ConfidenceDot } from './ConfidenceDot';
@@ -29,17 +30,31 @@ export function RefCard({ refItem, drp }: { refItem: RefRow; drp?: DRP }) {
         </div>
         <span className="font-mono-token truncate text-xs text-[var(--color-fg-subtle)]">{refItem.source_id}</span>
         {drp && <PaletteStrip palette={drp.color.palette} />}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            navigator.clipboard?.writeText(refItem.id);
-          }}
-          className="font-mono-token mt-1 w-fit rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-[11px] text-[var(--color-fg-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-fg)]"
-        >
-          {refItem.id} · copy
-        </button>
+        <CopyRefIdButton refId={refItem.id} />
       </div>
     </Link>
+  );
+}
+
+// Used with `stylesync pack <ref_id>` from the CLI to generate a style pack
+// from this reference -- shown as a short labelled action (with a tooltip
+// explaining why you'd want it) rather than the raw id, which just read as
+// unexplained clutter under every card.
+function CopyRefIdButton({ refId }: { refId: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        navigator.clipboard?.writeText(refId);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      }}
+      title={`Copy this reference's ID -- use it with \`stylesync pack ${refId}\` to generate a style pack from the CLI`}
+      className="font-mono-token mt-1 flex w-fit items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-[11px] text-[var(--color-fg-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-fg)]"
+    >
+      {copied ? '✔ copied' : 'Copy ref ID'}
+    </button>
   );
 }

@@ -1,7 +1,59 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { DRP } from '@stylesync/core';
+
+// Extracts a loadable Google Fonts family name from a CSS font-stack string
+// like `"Poppins", sans-serif` or `Inter, -apple-system, ...` -- takes the
+// first entry, strips quotes. Returns null for generic/system stacks with no
+// real family name up front (nothing useful to ask Google Fonts for).
+function primaryFamilyName(stack: string): string | null {
+  const first = stack.split(',')[0]?.trim().replace(/^['"]|['"]$/g, '');
+  if (!first) return null;
+  const generic = ['sans-serif', 'serif', 'monospace', 'system-ui', 'ui-monospace', 'ui-sans-serif', 'ui-serif', 'cursive', 'fantasy'];
+  if (generic.includes(first.toLowerCase())) return null;
+  return first;
+}
+
+// One row in the Fonts section: label, a live rendered preview (loading the
+// real family from Google Fonts when we can, since a name/description alone
+// doesn't tell you what a typeface actually looks like), and the raw stack.
+function FontRow({ role, stack, source }: { role: string; stack: string; source: 'google' | 'system' | 'custom' }) {
+  const [loaded, setLoaded] = useState(false);
+  const familyName = source === 'google' ? primaryFamilyName(stack) : null;
+
+  useEffect(() => {
+    if (!familyName) return;
+    const id = `gfont-${familyName.replace(/\s+/g, '-').toLowerCase()}`;
+    if (document.getElementById(id)) {
+      setLoaded(true);
+      return;
+    }
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(familyName)}:wght@400;600;700&display=swap`;
+    link.onload = () => setLoaded(true);
+    link.onerror = () => setLoaded(false);
+    document.head.appendChild(link);
+  }, [familyName]);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-baseline gap-2">
+        <span className="font-mono-token w-16 text-xs capitalize text-[var(--color-fg-subtle)]">{role}</span>
+        <span className="text-sm">{stack}</span>
+        <span className="font-mono-token text-xs text-[var(--color-fg-subtle)]">({source})</span>
+      </div>
+      <p
+        className="truncate text-2xl"
+        style={{ fontFamily: familyName && loaded ? `"${familyName}", ${stack}` : stack }}
+      >
+        The quick brown fox jumps
+      </p>
+    </div>
+  );
+}
 
 export function DrpTabs({ drp }: { drp: DRP }) {
   const [tab, setTab] = useState<'tokens' | 'components' | 'provenance'>('tokens');
@@ -65,17 +117,12 @@ function TokensPanel({ drp }: { drp: DRP }) {
 
       <section>
         <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">Fonts</h3>
-        <div className="flex flex-col gap-1 text-sm">
-          <div className="flex items-baseline gap-2">
-            <span className="font-mono-token w-16 text-xs text-[var(--color-fg-subtle)]">display</span>
-            <span>{drp.typography.families.display.stack}</span>
-            <span className="font-mono-token text-xs text-[var(--color-fg-subtle)]">({drp.typography.families.display.source})</span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="font-mono-token w-16 text-xs text-[var(--color-fg-subtle)]">body</span>
-            <span>{drp.typography.families.body.stack}</span>
-            <span className="font-mono-token text-xs text-[var(--color-fg-subtle)]">({drp.typography.families.body.source})</span>
-          </div>
+        <div className="flex flex-col gap-4">
+          <FontRow role="display" stack={drp.typography.families.display.stack} source={drp.typography.families.display.source} />
+          <FontRow role="body" stack={drp.typography.families.body.stack} source={drp.typography.families.body.source} />
+          {(drp.typography.families.additional ?? []).map((f) => (
+            <FontRow key={f.role} role={f.role} stack={f.stack} source={f.source} />
+          ))}
         </div>
       </section>
 

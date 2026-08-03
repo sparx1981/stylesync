@@ -22,6 +22,9 @@ export { extractTierC } from './drp/extractTierC.js';
 export { validateQualityGate } from './drp/qualityGate.js';
 export type { QualityGateResult } from './drp/qualityGate.js';
 
+export { renderBrandGuidePdf } from './brandguide/renderBrandGuidePdf.js';
+export type { BrandGuideOptions } from './brandguide/renderBrandGuidePdf.js';
+
 export { generatePack } from './pack/generatePack.js';
 export type { GeneratePackOptions, GeneratePackResult } from './pack/generatePack.js';
 export { renderStylepackMd } from './pack/stylepackMd.js';

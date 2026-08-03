@@ -30,6 +30,10 @@ export function DrpTabs({ drp }: { drp: DRP }) {
 }
 
 function TokensPanel({ drp }: { drp: DRP }) {
+  const navRecipe = drp.components['layout.sidebar'] ?? drp.components['layout.topbar'];
+  const footerRecipe = drp.components['layout.page'];
+  const primaryBtnNotes = (drp.components['action.button.primary'] as Record<string, unknown> | undefined)?.notes;
+
   return (
     <div className="flex flex-col gap-8">
       <section>
@@ -57,6 +61,22 @@ function TokensPanel({ drp }: { drp: DRP }) {
           min body contrast {drp.color.contrast_report.min_body_ratio}:1 · WCAG AA {drp.color.contrast_report.wcag_aa_pass ? 'pass' : 'fail'}
           {drp.color.contrast_report.contrast_adjusted ? ' (auto-corrected)' : ''}
         </p>
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">Fonts</h3>
+        <div className="flex flex-col gap-1 text-sm">
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono-token w-16 text-xs text-[var(--color-fg-subtle)]">display</span>
+            <span>{drp.typography.families.display.stack}</span>
+            <span className="font-mono-token text-xs text-[var(--color-fg-subtle)]">({drp.typography.families.display.source})</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono-token w-16 text-xs text-[var(--color-fg-subtle)]">body</span>
+            <span>{drp.typography.families.body.stack}</span>
+            <span className="font-mono-token text-xs text-[var(--color-fg-subtle)]">({drp.typography.families.body.source})</span>
+          </div>
+        </div>
       </section>
 
       <section>
@@ -96,6 +116,40 @@ function TokensPanel({ drp }: { drp: DRP }) {
             </div>
           ))}
         </div>
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">Layout &amp; navigation</h3>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+          <dt className="text-[var(--color-fg-subtle)]">Nav pattern</dt>
+          <dd className="capitalize">{drp.layout.nav_pattern}</dd>
+          <dt className="text-[var(--color-fg-subtle)]">Content alignment</dt>
+          <dd className="capitalize">{drp.layout.content_alignment}</dd>
+          {navRecipe?.logo_placement != null && (
+            <>
+              <dt className="text-[var(--color-fg-subtle)]">Logo placement</dt>
+              <dd>{String(navRecipe.logo_placement)}</dd>
+            </>
+          )}
+          {navRecipe?.header_style != null && (
+            <>
+              <dt className="text-[var(--color-fg-subtle)]">Header style</dt>
+              <dd>{String(navRecipe.header_style)}</dd>
+            </>
+          )}
+          {footerRecipe?.footer_style != null && (
+            <>
+              <dt className="text-[var(--color-fg-subtle)]">Footer style</dt>
+              <dd>{String(footerRecipe.footer_style)}</dd>
+            </>
+          )}
+          {primaryBtnNotes != null && (
+            <>
+              <dt className="text-[var(--color-fg-subtle)]">Primary button</dt>
+              <dd>{String(primaryBtnNotes)}</dd>
+            </>
+          )}
+        </dl>
       </section>
     </div>
   );

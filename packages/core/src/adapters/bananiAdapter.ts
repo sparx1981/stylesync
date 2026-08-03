@@ -65,7 +65,13 @@ export const bananiAdapter: SourceAdapter = {
           });
 
           for (const screen of screens.slice(0, listing.screens_per_app_limit)) {
-            const externalId = `${slug}-${contentHash(screen.src).slice(0, 12)}`;
+            // contentHash() returns a "sha256:<hex>" string -- the colon is
+            // fine inside a hash value, but it broke every Banani ref's detail
+            // page: this externalId flows straight into the ref_id used in the
+            // /ref/[id] route, and a colon in that URL segment made Next/Vercel's
+            // routing 404 instead of matching the page. Strip non-alphanumerics
+            // so the id is a plain URL-safe slug.
+            const externalId = `${slug}-${contentHash(screen.src).replace(/[^a-z0-9]/gi, '').slice(0, 12)}`;
             yield {
               externalId,
               originUrl: pageUrl,

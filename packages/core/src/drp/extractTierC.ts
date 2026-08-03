@@ -33,7 +33,12 @@ no prose:
     "transparent over hero image", "solid dark bar with centered nav") },
   "footer": { "visible": boolean, "style": string (one short phrase, or "" if not visible) },
   "primary_button_style": string (one short phrase describing the main call-to-action button's
-    look, e.g. "solid pill-shaped, high-contrast fill", "outlined, sharp corners")
+    look, e.g. "solid pill-shaped, high-contrast fill", "outlined, sharp corners"),
+  "additional_fonts": [{"role": string, "font": string, "source": "google"|"system"|"custom"}]
+    (list ANY other distinct fonts visible beyond the main display/body pairing above -- e.g. a
+    separate monospace/code font, a distinctive logo/wordmark font, a numeric/tabular font used
+    for stats or prices. Use a short role label for each, e.g. "logo", "code", "numeric/stats".
+    Return an empty array if there genuinely aren't any others visible.)
 }
 Base every field on what's actually visible. If you are unsure of an exact hex, estimate from the
 dominant pixels you can see — do not invent a value that contradicts the image. If a field genuinely
@@ -91,6 +96,7 @@ export async function extractTierC(capture: RawCapture, refId: string, sourceId:
     header?: { visible: boolean; style: string };
     footer?: { visible: boolean; style: string };
     primary_button_style?: string;
+    additional_fonts?: Array<{ role: string; font: string; source?: 'google' | 'system' | 'custom' }>;
   };
 
   const primaryOklch = parseToOklch(parsed.primary_hex)!;
@@ -127,6 +133,9 @@ export async function extractTierC(capture: RawCapture, refId: string, sourceId:
   const displayFontStack = parsed.display_font?.trim() || 'system-ui, sans-serif';
   const bodyFontStack = parsed.body_font?.trim() || 'system-ui, sans-serif';
   const fontSource = parsed.font_source ?? 'system';
+  const additionalFonts = (parsed.additional_fonts ?? [])
+    .filter((f) => f?.font?.trim())
+    .map((f) => ({ role: f.role?.trim() || 'other', stack: f.font.trim(), source: f.source ?? 'system' }));
 
   const navPattern = parsed.nav_pattern ?? 'topbar';
   const contentAlignment = parsed.content_alignment ?? 'left';
@@ -169,6 +178,7 @@ export async function extractTierC(capture: RawCapture, refId: string, sourceId:
         display: { stack: displayFontStack, source: fontSource, weights: [600, 700] },
         body: { stack: bodyFontStack, source: fontSource, weights: [400, 500] },
         mono: { stack: 'ui-monospace, monospace', source: 'system', weights: [400] },
+        ...(additionalFonts.length ? { additional: additionalFonts } : {}),
       },
       scale: { ratio: parsed.type_ratio, base_px: parsed.base_font_px, steps: buildStepsFromRatio(parsed.base_font_px, parsed.type_ratio) },
     },

@@ -28,11 +28,22 @@ export interface TypeStep {
   weight: number;
 }
 
+export interface DRPFont {
+  role: string;
+  stack: string;
+  source: 'google' | 'system' | 'custom';
+}
+
 export interface DRPTypography {
   families: {
     display: { stack: string; source: 'google' | 'system' | 'custom'; weights: number[] };
     body: { stack: string; source: 'google' | 'system' | 'custom'; weights: number[] };
     mono: { stack: string; source: 'google' | 'system' | 'custom'; weights: number[] };
+    // Any further distinct fonts spotted on the reference beyond the main
+    // display/body pairing -- e.g. a separate wordmark/logo font, or a
+    // tabular/numeric font used for stats and prices. Optional and additive,
+    // so existing DRPs/consumers without this field keep working.
+    additional?: DRPFont[];
   };
   scale: {
     ratio: number;

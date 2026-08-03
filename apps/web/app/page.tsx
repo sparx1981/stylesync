@@ -79,7 +79,7 @@ export default async function LibraryPage({ searchParams }: PageProps) {
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {refs.map((r) => (
-              <RefCard key={r.id} ref={r} drp={drpByRef.get(r.id)} />
+              <RefCard key={r.id} refItem={r} drp={drpByRef.get(r.id)} />
             ))}
           </div>
         )}

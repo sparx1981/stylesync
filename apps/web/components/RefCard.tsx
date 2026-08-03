@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import type { DRP, RefRow } from '@stylesync/core';
 import { ConfidenceDot } from './ConfidenceDot';

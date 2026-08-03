@@ -1,3 +1,4 @@
+import { chromium, type Browser } from 'playwright';
 import { runCaptureRoutine } from './captureRoutine.js';
 import { loadSourceConfig } from './sourceConfig.js';
 import { contentHash } from '../util/hash.js';
@@ -20,6 +21,64 @@ async function fetchText(url: string): Promise<string> {
 function titleFromSlug(slug: string): string {
   const words = slug.split('-');
   return words.map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(' ');
+}
+
+// Every /spells/{slug} page tags the app being showcased (e.g. "Transit"),
+// linking to designspells.com/apps/{app-slug} — and THAT page links out to
+// the app's real, live website (confirmed live: /apps/transit -> https://
+// transitapp.com, /apps/discord -> https://discord.gg). Resolving this
+// two-hop chain lets capture() pull real computed CSS (real fonts, real
+// colours, real component recipes) from the actual product instead of
+// guessing from a screenshot — Tier B instead of Tier C. Cached per
+// app-slug since many spells share the same app (e.g. five different
+// Discord interactions all resolve to the same discord.gg lookup).
+const appRealUrlCache = new Map<string, string | null>();
+
+async function resolveRealSiteUrl(browser: Browser, spellUrl: string, log: (msg: string) => void): Promise<string | null> {
+  let appSlug: string | null = null;
+  try {
+    const page = await browser.newPage();
+    try {
+      await page.goto(spellUrl, { waitUntil: 'networkidle', timeout: 20_000 });
+      appSlug = await page.evaluate(() => {
+        const link = document.querySelector('a[href^="/apps/"]');
+        const href = link?.getAttribute('href');
+        return href ? href.replace('/apps/', '').replace(/\/$/, '') : null;
+      });
+    } finally {
+      await page.close();
+    }
+  } catch (err) {
+    log(`design-spells: could not read app link from ${spellUrl}: ${(err as Error).message}`);
+    return null;
+  }
+  if (!appSlug) return null;
+
+  if (appRealUrlCache.has(appSlug)) return appRealUrlCache.get(appSlug)!;
+
+  let realUrl: string | null = null;
+  try {
+    const page = await browser.newPage();
+    try {
+      await page.goto(`https://designspells.com/apps/${appSlug}`, { waitUntil: 'networkidle', timeout: 20_000 });
+      realUrl = await page.evaluate(() => {
+        // Skip designspells.com's own nav/sponsor/social links -- the real
+        // app link is the first outbound href that isn't one of those.
+        const blocked = /designspells\.com|twitter\.com|x\.com|threads\.net|mastodon\.social|tally\.so/i;
+        const anchors = Array.from(document.querySelectorAll('a[href^="http"]')) as HTMLAnchorElement[];
+        for (const a of anchors) {
+          if (!blocked.test(a.href)) return a.href;
+        }
+        return null;
+      });
+    } finally {
+      await page.close();
+    }
+  } catch (err) {
+    log(`design-spells: could not resolve real site for app "${appSlug}": ${(err as Error).message}`);
+  }
+  appRealUrlCache.set(appSlug, realUrl);
+  return realUrl;
 }
 
 // Design Spells (designspells.com) catalogues individual UI micro-
@@ -71,26 +130,53 @@ export const designSpellsAdapter: SourceAdapter = {
   async capture(item: DiscoveredItem, ctx: CrawlContext): Promise<RawCapture> {
     const limiter = new RateLimiter(ctx.rpm);
     await limiter.wait();
-    // captureMotion: true — every spell page centres on a real captured
-    // video of the interaction, so a short screen recording (same
-    // mechanism used for Godly/Recent) preserves that rather than a static
-    // screenshot of one frame.
-    const capture = await runCaptureRoutine({
-      url: item.originUrl,
-      externalId: item.externalId,
-      title: item.title,
-      creatorCredit: 'via Design Spells',
-      captureMotion: true,
-    });
-    // Same fix as Godly/Recent: this page's DOM (nav, "Submit"/"Subscribe"
-    // buttons, tag pills) belongs to designspells.com's own site chrome,
-    // not the interaction being referenced — every /spells/{slug} page
-    // shares the same template, so computedStyles here is identical junk
-    // across every item and has nothing to do with the actual showcased
-    // design. buildDRP() picks Tier B (computed_css) over Tier C (vision)
-    // whenever computedStyles is present, so it must be stripped here to
-    // force real vision extraction of the showcased screenshot instead.
-    return { ...capture, computedStyles: undefined };
+    const browser = await chromium.launch({ headless: true });
+    try {
+      // captureMotion: true — every spell page centres on a real captured
+      // video of the interaction, so a short screen recording (same
+      // mechanism used for Godly/Recent) preserves that rather than a static
+      // screenshot of one frame.
+      const capture = await runCaptureRoutine({
+        url: item.originUrl,
+        externalId: item.externalId,
+        title: item.title,
+        creatorCredit: 'via Design Spells',
+        captureMotion: true,
+        browser,
+      });
+
+      // This page's own DOM (nav, "Submit"/"Subscribe" buttons, tag pills)
+      // belongs to designspells.com's site chrome, not the interaction being
+      // referenced, so it's never used for styling — either real computed
+      // CSS pulled from the actual product below, or (if that can't be
+      // resolved) vision extraction of the showcased screenshot, same as
+      // before this real-site lookup existed.
+      const realUrl = await resolveRealSiteUrl(browser, item.originUrl, ctx.log);
+      if (!realUrl) {
+        return { ...capture, computedStyles: undefined };
+      }
+
+      try {
+        const realCapture = await runCaptureRoutine({
+          url: realUrl,
+          externalId: `${item.externalId}-realsite`,
+          captureMotion: false,
+          browser,
+        });
+        return {
+          ...capture,
+          computedStyles: realCapture.computedStyles,
+          stylesheetText: realCapture.stylesheetText,
+          fontFaces: realCapture.fontFaces,
+          rootCustomProperties: realCapture.rootCustomProperties,
+        };
+      } catch (err) {
+        ctx.log(`design-spells: real-site capture failed for ${realUrl}, falling back to vision: ${(err as Error).message}`);
+        return { ...capture, computedStyles: undefined };
+      }
+    } finally {
+      await browser.close();
+    }
   },
 
   async health(): Promise<HealthReport> {

@@ -75,13 +75,22 @@ export const designSpellsAdapter: SourceAdapter = {
     // video of the interaction, so a short screen recording (same
     // mechanism used for Godly/Recent) preserves that rather than a static
     // screenshot of one frame.
-    return runCaptureRoutine({
+    const capture = await runCaptureRoutine({
       url: item.originUrl,
       externalId: item.externalId,
       title: item.title,
       creatorCredit: 'via Design Spells',
       captureMotion: true,
     });
+    // Same fix as Godly/Recent: this page's DOM (nav, "Submit"/"Subscribe"
+    // buttons, tag pills) belongs to designspells.com's own site chrome,
+    // not the interaction being referenced — every /spells/{slug} page
+    // shares the same template, so computedStyles here is identical junk
+    // across every item and has nothing to do with the actual showcased
+    // design. buildDRP() picks Tier B (computed_css) over Tier C (vision)
+    // whenever computedStyles is present, so it must be stripped here to
+    // force real vision extraction of the showcased screenshot instead.
+    return { ...capture, computedStyles: undefined };
   },
 
   async health(): Promise<HealthReport> {

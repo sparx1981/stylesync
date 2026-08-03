@@ -77,13 +77,22 @@ export const godlyAdapter: SourceAdapter = {
     // motion/micro-interaction reference; the animated media on these pages
     // (often an animated .webp) plays in real time, so a short screen
     // recording captures it the same way it would a video element.
-    return runCaptureRoutine({
+    const capture = await runCaptureRoutine({
       url: item.originUrl,
       externalId: item.externalId,
       title: item.title,
       creatorCredit: 'via Recent (recent.design)',
       captureMotion: true,
     });
+    // This page's DOM (nav, buttons, headings) belongs to recent.design's
+    // own site chrome, not the individual shot being referenced — every
+    // /i/{slug} page shares the same template, so computedStyles here is
+    // identical junk across every item (same colours, same radii) and has
+    // nothing to do with the actual showcased design. buildDRP() picks Tier
+    // B (computed_css) over Tier C (vision) whenever computedStyles is
+    // present, so it must be stripped here to force the real vision
+    // extraction of the showcased screenshot/motion instead.
+    return { ...capture, computedStyles: undefined };
   },
 
   async health(): Promise<HealthReport> {

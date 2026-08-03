@@ -17,10 +17,27 @@ no prose:
   "radius_px": number,
   "elevation_strategy": "border" | "shadow" | "mixed",
   "descriptors": string[] (3-6 short adjectives, e.g. "dark", "data-dense", "geometric"),
-  "character": string (one sentence, plain language)
+  "character": string (one sentence, plain language),
+  "display_font": string (best guess at the heading/display font family actually visible, e.g.
+    "Inter", "Poppins", "a bold geometric sans-serif", "a serif with high contrast strokes" —
+    name it if you recognize it, otherwise describe its visible style),
+  "body_font": string (same idea, for body/paragraph text — often different from display_font),
+  "font_source": "google" | "system" | "custom" (best guess: does this look like a common Google
+    Font / system font stack, or a custom/licensed typeface?),
+  "screen_type": "login/auth" | "dashboard" | "landing/marketing" | "settings" | "onboarding" |
+    "content list/feed" | "detail/profile" | "checkout/form" | "other",
+  "nav_pattern": "sidebar" | "topbar" | "none" (which nav layout is actually visible in this shot),
+  "content_alignment": "left" | "center" (how the main content block is aligned),
+  "logo_placement": string (e.g. "top-left", "top-center", "sidebar-top", "none visible"),
+  "header": { "visible": boolean, "style": string (one short phrase describing its look, e.g.
+    "transparent over hero image", "solid dark bar with centered nav") },
+  "footer": { "visible": boolean, "style": string (one short phrase, or "" if not visible) },
+  "primary_button_style": string (one short phrase describing the main call-to-action button's
+    look, e.g. "solid pill-shaped, high-contrast fill", "outlined, sharp corners")
 }
 Base every field on what's actually visible. If you are unsure of an exact hex, estimate from the
-dominant pixels you can see — do not invent a value that contradicts the image.`;
+dominant pixels you can see — do not invent a value that contradicts the image. If a field genuinely
+isn't visible in this screenshot (e.g. no footer), say so plainly rather than guessing wildly.`;
 
 export async function extractTierC(capture: RawCapture, refId: string, sourceId: string): Promise<DRP> {
   if (!capture.screenshotPng) {
@@ -36,7 +53,7 @@ export async function extractTierC(capture: RawCapture, refId: string, sourceId:
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-5',
-    max_tokens: 1024,
+    max_tokens: 1536,
     messages: [
       {
         role: 'user',
@@ -64,6 +81,16 @@ export async function extractTierC(capture: RawCapture, refId: string, sourceId:
     elevation_strategy: 'border' | 'shadow' | 'mixed';
     descriptors: string[];
     character: string;
+    display_font?: string;
+    body_font?: string;
+    font_source?: 'google' | 'system' | 'custom';
+    screen_type?: string;
+    nav_pattern?: 'sidebar' | 'topbar' | 'none';
+    content_alignment?: 'left' | 'center';
+    logo_placement?: string;
+    header?: { visible: boolean; style: string };
+    footer?: { visible: boolean; style: string };
+    primary_button_style?: string;
   };
 
   const primaryOklch = parseToOklch(parsed.primary_hex)!;
@@ -93,6 +120,37 @@ export async function extractTierC(capture: RawCapture, refId: string, sourceId:
 
   const minBodyRatio = contrastRatio(semantic['fg.default'], semantic['bg.canvas']);
 
+  // Best-guess font stacks: fall back to a safe system stack when the model
+  // couldn't identify anything specific, but otherwise carry the visible
+  // font name/description straight through — this is genuinely what's on
+  // screen, not a placeholder.
+  const displayFontStack = parsed.display_font?.trim() || 'system-ui, sans-serif';
+  const bodyFontStack = parsed.body_font?.trim() || 'system-ui, sans-serif';
+  const fontSource = parsed.font_source ?? 'system';
+
+  const navPattern = parsed.nav_pattern ?? 'topbar';
+  const contentAlignment = parsed.content_alignment ?? 'left';
+
+  const descriptors = parsed.screen_type ? [parsed.screen_type, ...parsed.descriptors] : parsed.descriptors;
+
+  const components: DRP['components'] = {};
+  const navRecipe = {
+    logo_placement: parsed.logo_placement ?? 'unknown',
+    header_visible: parsed.header?.visible ?? null,
+    header_style: parsed.header?.style ?? null,
+  };
+  if (navPattern === 'sidebar') {
+    components['layout.sidebar'] = navRecipe;
+  } else if (navPattern === 'topbar') {
+    components['layout.topbar'] = navRecipe;
+  }
+  if (parsed.footer?.visible) {
+    components['layout.page'] = { footer_visible: true, footer_style: parsed.footer.style };
+  }
+  if (parsed.primary_button_style) {
+    components['action.button.primary'] = { notes: parsed.primary_button_style };
+  }
+
   return {
     drp_version: 1,
     ref_id: refId,
@@ -104,12 +162,12 @@ export async function extractTierC(capture: RawCapture, refId: string, sourceId:
       extraction_method: 'vision_inferred',
       confidence: 0.6,
     },
-    identity: { name: capture.title ?? refId, descriptors: parsed.descriptors, theme_mode: parsed.theme_mode, density: 'comfortable', character: parsed.character },
+    identity: { name: capture.title ?? refId, descriptors, theme_mode: parsed.theme_mode, density: 'comfortable', character: parsed.character },
     color: { palette, semantic, contrast_report: { min_body_ratio: round2(minBodyRatio), wcag_aa_pass: minBodyRatio >= 4.5, contrast_adjusted: false } },
     typography: {
       families: {
-        display: { stack: 'system-ui, sans-serif', source: 'system', weights: [600, 700] },
-        body: { stack: 'system-ui, sans-serif', source: 'system', weights: [400, 500] },
+        display: { stack: displayFontStack, source: fontSource, weights: [600, 700] },
+        body: { stack: bodyFontStack, source: fontSource, weights: [400, 500] },
         mono: { stack: 'ui-monospace, monospace', source: 'system', weights: [400] },
       },
       scale: { ratio: parsed.type_ratio, base_px: parsed.base_font_px, steps: buildStepsFromRatio(parsed.base_font_px, parsed.type_ratio) },
@@ -126,8 +184,8 @@ export async function extractTierC(capture: RawCapture, refId: string, sourceId:
       signatures: [],
       reduced_motion_fallback: 'opacity-only',
     },
-    layout: { container_max_px: 1200, grid: { columns: 12, gutter_px: 24 }, breakpoints: { sm: 640, md: 768, lg: 1024, xl: 1280 }, nav_pattern: 'topbar', content_alignment: 'left' },
-    components: {},
+    layout: { container_max_px: 1200, grid: { columns: 12, gutter_px: 24 }, breakpoints: { sm: 640, md: 768, lg: 1024, xl: 1280 }, nav_pattern: navPattern, content_alignment: contentAlignment },
+    components,
     anti_patterns: [
       parsed.elevation_strategy === 'border' ? 'Do not add box-shadows to cards — this system separates surfaces with hairline borders.' : 'Keep shadow elevation subtle and consistent across surfaces.',
     ],

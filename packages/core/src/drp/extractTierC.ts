@@ -44,60 +44,40 @@ Base every field on what's actually visible. If you are unsure of an exact hex, 
 dominant pixels you can see — do not invent a value that contradicts the image. If a field genuinely
 isn't visible in this screenshot (e.g. no footer), say so plainly rather than guessing wildly.`;
 
+// The exact JSON shape both vision-model backends must return, parsed from
+// whichever provider actually ran. Keeping this as a named type (rather than
+// an inline type on a single `parsed` local, as before) is what lets two
+// different API-calling functions below share one return type.
+interface VisionExtraction {
+  theme_mode: 'light' | 'dark';
+  primary_hex: string;
+  neutral_hex: string;
+  accent_hex: string | null;
+  base_font_px: number;
+  type_ratio: number;
+  radius_px: number;
+  elevation_strategy: 'border' | 'shadow' | 'mixed';
+  descriptors: string[];
+  character: string;
+  display_font?: string;
+  body_font?: string;
+  font_source?: 'google' | 'system' | 'custom';
+  screen_type?: string;
+  nav_pattern?: 'sidebar' | 'topbar' | 'none';
+  content_alignment?: 'left' | 'center';
+  logo_placement?: string;
+  header?: { visible: boolean; style: string };
+  footer?: { visible: boolean; style: string };
+  primary_button_style?: string;
+  additional_fonts?: Array<{ role: string; font: string; source?: 'google' | 'system' | 'custom' }>;
+}
+
 export async function extractTierC(capture: RawCapture, refId: string, sourceId: string): Promise<DRP> {
   if (!capture.screenshotPng) {
     throw new Error(`extractTierC requires a screenshot; ${refId} has none.`);
   }
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY not set — Tier C vision extraction needs a Claude API key.');
-  }
-
-  const client = new Anthropic({ apiKey });
   const base64 = capture.screenshotPng.toString('base64');
-
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-5',
-    max_tokens: 1536,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64 } },
-          { type: 'text', text: VISION_SCHEMA_PROMPT },
-        ],
-      },
-    ],
-  });
-
-  const textBlock = response.content.find((b) => b.type === 'text');
-  if (!textBlock || textBlock.type !== 'text') {
-    throw new Error('Vision model returned no text block.');
-  }
-
-  const parsed = JSON.parse(extractJson(textBlock.text)) as {
-    theme_mode: 'light' | 'dark';
-    primary_hex: string;
-    neutral_hex: string;
-    accent_hex: string | null;
-    base_font_px: number;
-    type_ratio: number;
-    radius_px: number;
-    elevation_strategy: 'border' | 'shadow' | 'mixed';
-    descriptors: string[];
-    character: string;
-    display_font?: string;
-    body_font?: string;
-    font_source?: 'google' | 'system' | 'custom';
-    screen_type?: string;
-    nav_pattern?: 'sidebar' | 'topbar' | 'none';
-    content_alignment?: 'left' | 'center';
-    logo_placement?: string;
-    header?: { visible: boolean; style: string };
-    footer?: { visible: boolean; style: string };
-    primary_button_style?: string;
-    additional_fonts?: Array<{ role: string; font: string; source?: 'google' | 'system' | 'custom' }>;
-  };
+  const parsed = await runVisionExtraction(base64);
 
   const primaryOklch = parseToOklch(parsed.primary_hex)!;
   const neutralOklch = parseToOklch(parsed.neutral_hex)!;
@@ -201,6 +181,77 @@ export async function extractTierC(capture: RawCapture, refId: string, sourceId:
     ],
     assets_policy: { may_emit_fonts: true, may_emit_images: false, may_emit_icons: false },
   };
+}
+
+// Whichever key the user has set gets used — Anthropic (Claude) and Gemini
+// are treated as interchangeable backends for this one vision-classification
+// call. Anthropic is preferred only when BOTH are set, purely to keep
+// existing installs' behavior unchanged; there's no quality reason to prefer
+// one provider over the other here.
+async function runVisionExtraction(base64: string): Promise<VisionExtraction> {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (anthropicKey) return callAnthropicVision(base64, anthropicKey);
+  if (geminiKey) return callGeminiVision(base64, geminiKey);
+  throw new Error(
+    'No vision API key set — Tier C vision extraction needs either ANTHROPIC_API_KEY (Claude) or GEMINI_API_KEY (Gemini).'
+  );
+}
+
+async function callAnthropicVision(base64: string, apiKey: string): Promise<VisionExtraction> {
+  const client = new Anthropic({ apiKey });
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-5',
+    max_tokens: 1536,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64 } },
+          { type: 'text', text: VISION_SCHEMA_PROMPT },
+        ],
+      },
+    ],
+  });
+
+  const textBlock = response.content.find((b) => b.type === 'text');
+  if (!textBlock || textBlock.type !== 'text') {
+    throw new Error('Claude vision model returned no text block.');
+  }
+  return JSON.parse(extractJson(textBlock.text)) as VisionExtraction;
+}
+
+// Plain `fetch` against Gemini's REST API rather than the `@google/genai` SDK
+// — matches this codebase's existing preference for avoiding extra SDK
+// dependencies (the GitHub PR feature calls GitHub's REST API the same way,
+// rather than pulling in @octokit/rest). Deliberately targets the older,
+// still fully-supported `generateContent` endpoint rather than Google's
+// newer "Interactions API": generateContent's request/response shape is
+// simpler and better-suited to this one-shot, non-conversational call.
+async function callGeminiVision(base64: string, apiKey: string): Promise<VisionExtraction> {
+  const model = 'gemini-2.5-flash';
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [{ text: VISION_SCHEMA_PROMPT }, { inline_data: { mime_type: 'image/png', data: base64 } }],
+        },
+      ],
+      generationConfig: { responseMimeType: 'application/json' },
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Gemini vision request failed: ${res.status} ${res.statusText} ${body.slice(0, 300)}`);
+  }
+
+  const data = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Gemini vision model returned no text content.');
+  return JSON.parse(extractJson(text)) as VisionExtraction;
 }
 
 function buildStepsFromRatio(basePx: number, ratio: number) {

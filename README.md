@@ -25,10 +25,9 @@ your own machine.
   tuned 4-8 by silhouette score) via `culori`, WCAG contrast calculation and
   auto-correction, type-scale detection against modular ratios, spacing GCD
   detection, radius/shadow/motion extraction from actual computed styles.
-  Tier A (Figma Variables) and Tier C (Claude vision, needs
-  `ANTHROPIC_API_KEY`) are also implemented, though no adapter feeds Tier C
-  yet — see §6.2 of the spec, sources 5-8 are enrichment and intentionally
-  not built.
+  Tier A (Figma Variables) and Tier C (vision-based, via either Claude —
+  `ANTHROPIC_API_KEY` — or Gemini — `GEMINI_API_KEY`, whichever is set) are
+  also implemented; Banani is the current Tier C adapter.
 - **Style Pack generator**: `STYLEPACK.md`, `tokens.css`, `tailwind.theme.ts`,
   `tokens.json`, `components.md`, anti-patterns derived from the DRP's own
   signals.
@@ -92,7 +91,8 @@ Optional environment variables:
 
 ```bash
 export FIGMA_TOKEN=...           # only needed for the Figma adapter
-export ANTHROPIC_API_KEY=...     # only needed if you wire up a Tier C (vision) adapter later
+export ANTHROPIC_API_KEY=...     # Tier C (vision) adapters — either this or GEMINI_API_KEY
+export GEMINI_API_KEY=...        # alternative to ANTHROPIC_API_KEY for Tier C vision extraction
 ```
 
 ## Typical session

@@ -24,5 +24,8 @@ listing:
     - tinder
   screens_per_app_limit: 12
   scroll_passes: 10
-requires_env:
+# Vision extraction (Tier C) can run on either provider — only one of these
+# needs to be set, not both.
+requires_env_any:
   - ANTHROPIC_API_KEY
+  - GEMINI_API_KEY

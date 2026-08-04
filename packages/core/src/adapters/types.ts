@@ -24,7 +24,13 @@ export interface RawCapture {
   screenshotPng?: Buffer;
   thumbPng?: Buffer;
   dom?: string;
-  computedStyles?: Array<{ selector: string; styles: Record<string, string>; area: number }>;
+  // `width`/`height` are the element's real rendered bounding-box size (px) —
+  // distinct from `area` (their product, kept for backwards-compat weighting)
+  // and from any computed `width`/`max-width` CSS property that may show up
+  // inside `styles` itself. Having the real rendered width lets Tier B find
+  // an actual "this is the content container" element instead of guessing a
+  // layout width from nothing.
+  computedStyles?: Array<{ selector: string; styles: Record<string, string>; area: number; width?: number; height?: number }>;
   stylesheetText?: string;
   fontFaces?: string[];
   rootCustomProperties?: Record<string, string>;

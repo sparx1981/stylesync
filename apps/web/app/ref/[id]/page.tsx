@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { getDb } from '../../../lib/db';
 import { DrpTabs } from '../../../components/DrpTabs';
 import { CopyPackCommand } from '../../../components/CopyPackCommand';
+import { RestylePrForm } from '../../../components/RestylePrForm';
 import type { DRP } from '@stylesync/core';
 
 export const dynamic = 'force-dynamic';
@@ -43,6 +44,7 @@ export default async function ReferenceDetailPage({ params }: { params: Promise<
             </a>
           )}
         </div>
+        {drp && <RestylePrForm refId={id} />}
       </div>
 
       {/* Right: extracted design system, tabbed */}

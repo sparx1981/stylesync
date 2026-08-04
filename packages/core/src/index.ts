@@ -40,3 +40,6 @@ export type { VerificationResult } from './codemods/verify.js';
 export { MutationGuardViolation, MutationLog, assertAllowed } from './codemods/mutationGuard.js';
 export type { MutationTarget, MutationKind } from './codemods/mutationGuard.js';
 export { nearestToken } from './codemods/colorMap.js';
+
+export { openRestylePr } from './github/restylePr.js';
+export type { OpenRestylePrOptions, OpenRestylePrResult } from './github/restylePr.js';

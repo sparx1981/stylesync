@@ -13,6 +13,9 @@ export function Navbar() {
         <Link href="/sources" className="rounded-[var(--radius-sm)] px-3 py-1.5 text-[var(--color-fg-muted)] hover:bg-[var(--color-raised)] hover:text-[var(--color-fg)]">
           Sources
         </Link>
+        <Link href="/help" className="rounded-[var(--radius-sm)] px-3 py-1.5 text-[var(--color-fg-muted)] hover:bg-[var(--color-raised)] hover:text-[var(--color-fg)]">
+          Help
+        </Link>
       </nav>
     </header>
   );

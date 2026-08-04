@@ -10,7 +10,8 @@ const GH_REPO = 'sparx1981/stylesync';
 // Where to get each token a source might need, and a link straight to
 // where it actually gets used (GitHub Actions secrets — the sync worker,
 // not this website, is what reads these). Extend this alongside a source's
-// `requires_env` in config/sources/*.yaml when adding a new gated source.
+// `requires_env`/`requires_env_any` in config/sources/*.yaml when adding a
+// new gated source.
 const ENV_SETUP_INFO: Record<string, { getUrl: string; getLabel: string }> = {
   FIGMA_TOKEN: {
     getUrl: 'https://www.figma.com/developers/api#access-tokens',
@@ -20,7 +21,30 @@ const ENV_SETUP_INFO: Record<string, { getUrl: string; getLabel: string }> = {
     getUrl: 'https://console.anthropic.com/settings/keys',
     getLabel: 'Get a Claude API key',
   },
+  GEMINI_API_KEY: {
+    getUrl: 'https://aistudio.google.com/apikey',
+    getLabel: 'Get a Gemini API key',
+  },
 };
+
+// Renders one env var as `CODE` (linked to where to get it, when known).
+function EnvVarLink({ envVar }: { envVar: string }) {
+  return (
+    <>
+      <code className="font-mono-token">{envVar}</code>
+      {ENV_SETUP_INFO[envVar] && (
+        <>
+          {' '}
+          (
+          <a href={ENV_SETUP_INFO[envVar].getUrl} target="_blank" rel="noreferrer" className="underline hover:text-[var(--color-fg)]">
+            {ENV_SETUP_INFO[envVar].getLabel}
+          </a>
+          )
+        </>
+      )}
+    </>
+  );
+}
 
 export default async function SourcesPage() {
   const db = getDb();
@@ -61,7 +85,8 @@ export default async function SourcesPage() {
         <tbody>
           {rows.map(({ cfg, row, health, refsCount, avgConfidence }) => {
             const requiresEnv = (cfg.requires_env as string[] | undefined) ?? [];
-            const needsSetup = requiresEnv.length > 0 && !health?.ok;
+            const requiresEnvAny = (cfg.requires_env_any as string[] | undefined) ?? [];
+            const needsSetup = (requiresEnv.length > 0 || requiresEnvAny.length > 0) && !health?.ok;
             return (
             <Fragment key={cfg.id}>
             <tr className="border-b border-[var(--color-border)]">
@@ -94,22 +119,15 @@ export default async function SourcesPage() {
                   {requiresEnv.map((envVar, i) => (
                     <span key={envVar}>
                       {i > 0 && ', '}
-                      <code className="font-mono-token">{envVar}</code>
-                      {ENV_SETUP_INFO[envVar] && (
-                        <>
-                          {' '}
-                          (
-                          <a
-                            href={ENV_SETUP_INFO[envVar].getUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="underline hover:text-[var(--color-fg)]"
-                          >
-                            {ENV_SETUP_INFO[envVar].getLabel}
-                          </a>
-                          )
-                        </>
-                      )}
+                      <EnvVarLink envVar={envVar} />
+                    </span>
+                  ))}
+                  {requiresEnv.length > 0 && requiresEnvAny.length > 0 && ', and one of '}
+                  {requiresEnv.length === 0 && requiresEnvAny.length > 0 && 'one of '}
+                  {requiresEnvAny.map((envVar, i) => (
+                    <span key={envVar}>
+                      {i > 0 && ' or '}
+                      <EnvVarLink envVar={envVar} />
                     </span>
                   ))}
                   {' '}— then add it as a repo secret at{' '}

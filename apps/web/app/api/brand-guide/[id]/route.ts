@@ -3,7 +3,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getDb } from '../../../../lib/db';
 import { StyleSyncDB } from '@stylesync/core/db';
-import { renderBrandGuidePdf } from '@stylesync/core';
+// Imported from its own subpath, not the `@stylesync/core` root barrel --
+// the barrel also re-exports `codemods/verify.js`, which pulls in
+// Playwright (used for `takeShots`/`runAxeCheck`) and breaks `next build`
+// with unresolvable optional Playwright subdependencies once anything from
+// this route bundle reaches that file. Same reasoning as the Sources page's
+// `@stylesync/core/sources` subpath import.
+import { renderBrandGuidePdf } from '@stylesync/core/brandguide/renderBrandGuidePdf';
 import type { DRP } from '@stylesync/core';
 
 export const dynamic = 'force-dynamic';

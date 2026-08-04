@@ -15,10 +15,17 @@ export interface RawSourceConfig {
     rpm: number;
     enabled: boolean;
     // Env vars this source needs to actually do anything (beyond the always-
-    // required POSTGRES_URL/BLOB_READ_WRITE_TOKEN). Surfaced on the web
-    // Sources page as a setup hint when missing — see ENV_SETUP_INFO in
-    // apps/web/components/SourceActions.tsx.
+    // required POSTGRES_URL/BLOB_READ_WRITE_TOKEN) — ALL of these are needed.
+    // Surfaced on the web Sources page as a setup hint when missing — see
+    // ENV_SETUP_INFO in apps/web/app/sources/page.tsx.
     requires_env?: string[];
+    // Same idea, but for env vars that are interchangeable alternatives —
+    // ANY ONE of these being set is enough (e.g. a source that does vision
+    // extraction can run on either a Claude or a Gemini key; it doesn't need
+    // both). Kept as a separate field rather than overloading `requires_env`
+    // with nested arrays, so existing "needs all of these" configs don't
+    // have to change shape.
+    requires_env_any?: string[];
     [key: string]: unknown;
 }
 
@@ -109,7 +116,7 @@ const BUNDLED_SOURCE_CONFIGS: RawSourceConfig[] = [
                 screens_per_app_limit: 12,
                 scroll_passes: 10,
         },
-        requires_env: ['ANTHROPIC_API_KEY'],
+        requires_env_any: ['ANTHROPIC_API_KEY', 'GEMINI_API_KEY'],
   },
   {
         id: 'design-spells',
